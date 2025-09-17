@@ -1,0 +1,9 @@
+# Exclude Python cache
+__pycache__/
+
+# Exclude virtual environment
+venv/
+
+# Exclude config + notes
+calib.json
+overview.txt
