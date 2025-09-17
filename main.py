@@ -37,7 +37,6 @@ def fix_cal_inversions(cal):
 
 def run():
     cap = cv2.VideoCapture(0)
-    # optional: improve latency / size
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
