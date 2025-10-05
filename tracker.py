@@ -31,7 +31,8 @@ class HandTracker:
         result = self.hands.process(frame_rgb)
         frame_rgb.flags.writeable = True
         annot = frame_bgr.copy()
-        lm = None
+        lm2d = None
+        lm3d = None
         if result.multi_hand_landmarks:
             # pick the first detected hand (you set max_hands=1 anyway)
             hand_lms = result.multi_hand_landmarks[0]
@@ -41,7 +42,13 @@ class HandTracker:
                 y_px = lm_i.y * h
                 z_n = lm_i.z  # relative depth (negative is closer); keep as-is
                 pts.append((x_px, y_px, z_n))
-            lm = np.array(pts, dtype=np.float32)
+            lm2d = np.array(pts, dtype=np.float32)
+        if result.multi_hand_world_landmarks:
+            wld = result.multi_hand_world_landmarks[0]
+            pts3 = []
+            for p in wld.landmark:
+                pts3.append((p.x, p.y, p.z))  
+            lm3d = np.array(pts3, dtype=np.float32)
         if result.multi_hand_landmarks:
             self.mp_drawing.draw_landmarks(
             annot,
@@ -50,7 +57,7 @@ class HandTracker:
             self.mp_styles.get_default_hand_landmarks_style(),
             self.mp_styles.get_default_hand_connections_style(),
         )
-        return lm, annot
+        return lm2d, lm3d, annot
 
 
     def close(self):

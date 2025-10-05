@@ -51,16 +51,15 @@ def run():
     while True:
         ok, frame = cap.read()
         if not ok: break
-        lm, vis = ht.process(frame)
+        lm2d, lm3d, vis = ht.process(frame)
         cnt += 1
-        if lm is not None:
-            curls = finger_curl_from_landmarks(lm, use_composite=True, out='dict')
+        if lm2d is not None:
+            curls = finger_curl_from_landmarks(lm2d, lm3d, use_composite=True, out='dict', use_world=True)
             vals = [int(round(rad2deg(curls[k]))) for k in FINGER_ORDER]
             norm01 = normalize_curls_dict(curls, cal)  # [T,I,M,R,P] in 0..1
             norm_deg = [int(round(v * 180)) for v in norm01]
             if cnt % 30 == 0:  # print about once a second at ~30 fps
-                print("landmarks:", None if lm is None else lm.shape)
-                print(f"deg: T={vals[0]} I={vals[1]} M={vals[2]} R={vals[3]} P={vals[4]}")
+                print("landmarks:", None if lm2d is None else lm2d.shape)
                 print("raw deg : T={:3d} I={:3d} M={:3d} R={:3d} P={:3d}".format(*vals))
                 print("norm(°): T={:3d} I={:3d} M={:3d} R={:3d} P={:3d}".format(*norm_deg))
 
@@ -68,8 +67,8 @@ def run():
         k = cv2.waitKey(1) & 0xFF
         if k == 27:  # ESC
             break
-        elif k == ord('o') and lm is not None:
-            raw = finger_curl_from_landmarks(lm, use_blend=True)
+        elif k == ord('o') and lm2d is not None:
+            raw = finger_curl_from_landmarks(lm2d, lm3d, use_composite=True, out='dict', use_world=True)
             for name in FINGERS:
                 cal[name]['max'] = float(raw[name])   # OPEN → max
             if fix_cal_inversions(cal):
@@ -78,8 +77,8 @@ def run():
                 save_cal(cal)
             print("Captured OPEN (maxes) ✔")
 
-        elif k == ord('c') and lm is not None:
-            raw = finger_curl_from_landmarks(lm, use_blend=True)
+        elif k == ord('c') and lm2d is not None:
+            raw = finger_curl_from_landmarks(lm2d, lm3d, use_composite=True, out='dict', use_world=True)
             for name in FINGERS:
                 cal[name]['min'] = float(raw[name])   # CLOSED → min
             if fix_cal_inversions(cal):
@@ -87,7 +86,6 @@ def run():
             else:
                 save_cal(cal)
             print("Captured CLOSED (mins) ✔")
-            7
             print(last_capture_msg)
 
     ht.close()

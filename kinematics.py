@@ -27,38 +27,41 @@ def angle_3pt(a, b, c):
         return 0.0
     return float(ang)
 
-def finger_curl_from_landmarks(lm, use_blend=False, out='dict', use_composite=True):
+def finger_curl_from_landmarks(lm2d, lm3d=None, use_composite=True, out='dict', use_world=True):
     # index
     i_mcp, i_pip, i_dip, i_tip = INDEX
-    if use_composite:
-        index_val = composite_nonthumb_curl(lm, i_mcp, i_pip, i_dip, i_tip)
-    else:
-        index_val = blended_nonthumb_curl(lm, i_mcp, i_pip, i_dip) if use_blend \
-            else angle_3pt(xy(lm, i_mcp), xy(lm, i_pip), xy(lm, i_tip))
+    index_val = composite_nonthumb_curl(lm2d, lm3d, i_mcp, i_pip, i_dip, i_tip, use_world=use_world) \
+                if use_composite else angle_3pt_nd(P(lm3d or lm2d, i_mcp, use_world),
+                                                  P(lm3d or lm2d, i_pip, use_world),
+                                                  P(lm3d or lm2d, i_tip, use_world))
 
     # middle
     m_mcp, m_pip, m_dip, m_tip = MIDDLE
-    middle_val = composite_nonthumb_curl(lm, m_mcp, m_pip, m_dip, m_tip) if use_composite \
-        else (blended_nonthumb_curl(lm, m_mcp, m_pip, m_dip) if use_blend
-              else angle_3pt(xy(lm, m_mcp), xy(lm, m_pip), xy(lm, m_tip)))
+    middle_val = composite_nonthumb_curl(lm2d, lm3d, m_mcp, m_pip, m_dip, m_tip, use_world=use_world) \
+        if use_composite else angle_3pt_nd(P(lm3d or lm2d, m_mcp, use_world),
+                                           P(lm3d or lm2d, m_pip, use_world),
+                                           P(lm3d or lm2d, m_tip, use_world))
 
     # ring
     r_mcp, r_pip, r_dip, r_tip = RING
-    ring_val = composite_nonthumb_curl(lm, r_mcp, r_pip, r_dip, r_tip) if use_composite \
-        else (blended_nonthumb_curl(lm, r_mcp, r_pip, r_dip) if use_blend
-              else angle_3pt(xy(lm, r_mcp), xy(lm, r_pip), xy(lm, r_tip)))
+    ring_val = composite_nonthumb_curl(lm2d, lm3d, r_mcp, r_pip, r_dip, r_tip, use_world=use_world) \
+        if use_composite else angle_3pt_nd(P(lm3d or lm2d, r_mcp, use_world),
+                                           P(lm3d or lm2d, r_pip, use_world),
+                                           P(lm3d or lm2d, r_tip, use_world))
 
     # pinky
     p_mcp, p_pip, p_dip, p_tip = PINKY
-    pinky_val = composite_nonthumb_curl(lm, p_mcp, p_pip, p_dip, p_tip) if use_composite \
-        else (blended_nonthumb_curl(lm, p_mcp, p_pip, p_dip) if use_blend
-              else angle_3pt(xy(lm, p_mcp), xy(lm, p_pip), xy(lm, p_tip)))
+    pinky_val = composite_nonthumb_curl(lm2d, lm3d, p_mcp, p_pip, p_dip, p_tip, use_world=use_world) \
+        if use_composite else angle_3pt_nd(P(lm3d or lm2d, p_mcp, use_world),
+                                           P(lm3d or lm2d, p_pip, use_world),
+                                           P(lm3d or lm2d, p_tip, use_world))
 
     # thumb
     t_cmc, t_mcp, t_ip, t_tip = THUMB
-    thumb_val = composite_thumb_curl(lm, t_cmc, t_mcp, t_ip, t_tip) if use_composite \
-        else (0.7*angle_3pt(xy(lm, t_mcp), xy(lm, t_ip), xy(lm, t_tip))
-              + 0.3*angle_3pt(xy(lm, t_cmc), xy(lm, t_mcp), xy(lm, t_ip)))
+    thumb_val = composite_thumb_curl(lm2d, lm3d, t_cmc, t_mcp, t_ip, t_tip, use_world=use_world) \
+                if use_composite else angle_3pt_nd(P(lm3d or lm2d, t_mcp, use_world),
+                                                  P(lm3d or lm2d, t_ip,  use_world),
+                                                  P(lm3d or lm2d, t_tip, use_world))
 
     return [thumb_val, index_val, middle_val, ring_val, pinky_val] if out=='list' else {
         'thumb':  float(thumb_val),
@@ -127,43 +130,89 @@ def _dist(lm, i, j):
 def _clamp01(x):
     return 0.0 if x < 0.0 else 1.0 if x > 1.0 else x
 
-def composite_nonthumb_curl(lm, mcp, pip, dip, tip,
+def composite_nonthumb_curl(lm2d, lm3d, mcp, pip, dip, tip, use_world = True,
                             w_pip=0.45, w_mcp=0.15, w_chain=0.25, w_dist=0.15):
     """Blend angles + distances; auto-fallback when angle geometry is unreliable."""
     # Angles
-    pip_ang   = angle_3pt(xy(lm, mcp), xy(lm, pip), xy(lm, tip))   # use TIP instead of DIP
-    mcp_ang   = angle_3pt(xy(lm, WRIST), xy(lm, mcp), xy(lm, pip))
-    chain_ang = angle_3pt(xy(lm, mcp),  xy(lm, pip), xy(lm, tip))  # (same tri as pip_ang but you can keep both; they’ll correlate)
+    lm = lm3d if (use_world and lm3d is not None) else lm2d
+    a_wrs = P(lm, WRIST, use_world)
+    a_mcp = P(lm, mcp,   use_world)
+    a_pip = P(lm, pip,   use_world)
+    a_tip = P(lm, tip,   use_world)
 
-    # Reliability of PIP geometry (edge-on → small)
-    rel = _sin_of_angle(xy(lm, mcp), xy(lm, pip), xy(lm, tip))
+    pip_ang   = angle_3pt_nd(a_mcp, a_pip, a_tip)     
+    mcp_ang   = angle_3pt_nd(a_wrs, a_mcp, a_pip)
+    chain_ang = angle_3pt_nd(a_mcp, a_pip, a_tip)
 
-    # Distance cue (bigger curl → TIP gets closer to MCP)
-    d_tip_mcp = _dist(lm, tip, mcp)
-    d_w_mcp   = _dist(lm, WRIST, mcp)
-    dist_ratio = d_tip_mcp / _safe_norm([d_w_mcp])  # dimensionless
-    curl_dist = 1.0 - _clamp01(dist_ratio)          # 0=open, 1=closed-ish
+    rel       = cross_sin_nd(a_mcp, a_pip, a_tip)
+
+
+    d_tip_mcp = np.linalg.norm(P(lm, tip, use_world) - P(lm, mcp, use_world))
+    d_w_mcp   = max(np.linalg.norm(P(lm, WRIST, use_world) - P(lm, mcp, use_world)), 1e-6)
+    dist_ratio = d_tip_mcp / d_w_mcp
+    curl_dist  = 1.0 - _clamp01(dist_ratio)
 
     # Fallback: if rel is low (<~0.2), downweight angles, upweight distance
     if rel < 0.2:
         w_pip, w_mcp, w_chain, w_dist = 0.15, 0.10, 0.15, 0.60
 
-    # Composite raw "curl" (still in angle-ish units; we'll just treat it as raw for calibration)
     return (w_pip*pip_ang + w_mcp*mcp_ang + w_chain*chain_ang + w_dist*curl_dist)
 
-def composite_thumb_curl(lm, cmc, mcp, ip, tip,
+def composite_thumb_curl(lm2d, lm3d, cmc, mcp, ip, tip, use_world=True,
                          w_ip=0.5, w_mcp=0.2, w_chain=0.2, w_dist=0.1):
-    ip_ang    = angle_3pt(xy(lm, mcp), xy(lm, ip),  xy(lm, tip))
-    mcp_ang   = angle_3pt(xy(lm, cmc), xy(lm, mcp), xy(lm, ip))
-    chain_ang = angle_3pt(xy(lm, mcp), xy(lm, ip),  xy(lm, tip))
-    rel       = _sin_of_angle(xy(lm, mcp), xy(lm, ip), xy(lm, tip))
+    lm = lm3d if (use_world and lm3d is not None) else lm2d
 
-    d_tip_mcp = _dist(lm, tip, mcp)
-    d_w_mcp   = _dist(lm, WRIST, mcp)
-    dist_ratio = d_tip_mcp / _safe_norm([d_w_mcp])
+    a_cmc = P(lm, cmc, use_world)
+    a_mcp = P(lm, mcp, use_world)
+    a_ip  = P(lm, ip,  use_world)
+    a_tip = P(lm, tip, use_world)
+    a_wrs = P(lm, WRIST, use_world)
+
+    # Angles
+    ip_ang    = angle_3pt_nd(a_mcp, a_ip,  a_tip)
+    mcp_ang   = angle_3pt_nd(a_cmc, a_mcp, a_ip)
+    chain_ang = angle_3pt_nd(a_mcp, a_ip,  a_tip)
+
+    # Reliability (edge-on → small)
+    rel = cross_sin_nd(a_mcp, a_ip, a_tip)
+
+    # Distance cue (curled → TIP closer to MCP)
+    d_tip_mcp = np.linalg.norm(a_tip - a_mcp)
+    d_w_mcp   = max(np.linalg.norm(a_wrs - a_mcp), 1e-6)
+    dist_ratio = d_tip_mcp / d_w_mcp
     curl_dist  = 1.0 - _clamp01(dist_ratio)
 
+    # Fallback weights when geometry is weak
     if rel < 0.2:
         w_ip, w_mcp, w_chain, w_dist = 0.2, 0.1, 0.2, 0.5
 
     return (w_ip*ip_ang + w_mcp*mcp_ang + w_chain*chain_ang + w_dist*curl_dist)
+
+def angle_3pt_nd(a, b, c):
+    a = np.asarray(a, np.float32); b = np.asarray(b, np.float32); c = np.asarray(c, np.float32)
+    u = a - b; v = c - b
+    nu = np.linalg.norm(u); nv = np.linalg.norm(v)
+    if nu < 1e-6 or nv < 1e-6:
+        return 0.0
+    cosang = np.dot(u, v) / (nu * nv)
+    cosang = np.clip(cosang, -1.0, 1.0)
+    ang = np.arccos(cosang)
+    return float(ang if np.isfinite(ang) else 0.0)
+
+def cross_sin_nd(a, b, c):
+    """sin(theta) at B; use cross magnitude/|u||v|. Works in 3D (true cross) and 2D (z-magnitude)."""
+    a = np.asarray(a, np.float32); b = np.asarray(b, np.float32); c = np.asarray(c, np.float32)
+    u = a - b; v = c - b
+    nu = np.linalg.norm(u); nv = np.linalg.norm(v)
+    if nu < 1e-6 or nv < 1e-6:
+        return 0.0
+    if u.shape[0] == 3:
+        cross_mag = np.linalg.norm(np.cross(u, v))
+    else:
+        cross_mag = abs(u[0]*v[1] - u[1]*v[0])
+    return float(cross_mag / (nu*nv))
+
+def P(lm, idx, use_world):
+    """Return point idx from lm in proper dimensionality."""
+    if lm is None: return None
+    return lm[idx, :3] if (use_world and lm.shape[1] >= 3) else lm[idx, :2]
