@@ -2,7 +2,10 @@ import cv2, time
 from tracker import HandTracker
 from kinematics import finger_curl_from_landmarks, rad2deg, FINGER_ORDER, normalize_curls_dict
 import json, os
+import serial, time
 
+ser = serial.Serial("COM3", 115200, timeout=1)
+time.sleep(2)  
 
 CAL_FILE = "calib.json"
 FINGERS = ('thumb','index','middle','ring','pinky')
@@ -57,6 +60,8 @@ def run():
             curls = finger_curl_from_landmarks(lm2d, lm3d, use_composite=True, out='dict', use_world=True)
             vals = [int(round(rad2deg(curls[k]))) for k in FINGER_ORDER]
             norm01 = normalize_curls_dict(curls, cal)  # [T,I,M,R,P] in 0..1
+            packet = ",".join(f"{v:.2f}" for v in norm01) + "\n"
+            ser.write(packet.encode('utf-8'))
             norm_deg = [int(round(v * 180)) for v in norm01]
             if cnt % 30 == 0:  # print about once a second at ~30 fps
                 print("landmarks:", None if lm2d is None else lm2d.shape)
